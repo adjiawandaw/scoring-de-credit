@@ -93,8 +93,7 @@ with tab1:
             }
 
             try:
-                response = requests.post("https://api-scoring-c8xa.onrender.com/predict", json=tes_donnees)
-
+                response = requests.post("https://api-scoring-c8xa.onrender.com/predict", json=data)
                 if response.status_code == 200:
                     result = response.json()
                     statut = result['Statut Crédit']
