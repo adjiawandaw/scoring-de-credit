@@ -250,9 +250,7 @@ with tab2:
 
                         try:
                             response = requests.post("https://api-scoring-c8xa.onrender.com/predict", json=prediction_data_mapped)
-                            st.write("Status code:", response.status_code)
-                            st.write("Response text:", response.text)
-
+                            
                             if response.status_code == 200:
                                 result = response.json()
                                 statut = result['Statut Crédit']
