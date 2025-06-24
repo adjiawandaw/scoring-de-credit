@@ -14,7 +14,6 @@ def load_lottiefile(filepath: str):
         return json.load(f)
 
 # --- En-tête ---
-# --- En-tête élégant ---
 with st.container():
     col_icon, col_title = st.columns([1, 10])
     with col_icon:
@@ -52,6 +51,8 @@ def load_data():
 
 df = load_data()
 
+# Seuil fixé à 10% (pas de slider)
+SEUIL = 10
 
 # Tabs
 tab1, tab2 = st.tabs(["📈 Prédiction", "🔍 Infos Client"])
@@ -96,15 +97,14 @@ with tab1:
                 response = requests.post("https://api-scoring-c8xa.onrender.com/predict", json=data)
                 if response.status_code == 200:
                     result = response.json()
-                    statut = result['Statut Crédit']
                     proba = float(result['Probabilité de défaut']) * 100
 
-                    if statut in ["Approuvé", "Accepté"]:
+                    if proba <= SEUIL:
                         statut_affiche = "Approuvé"
-                        st.success(f"✅ Crédit Approuvé avec une probabilité de défaut de {proba:.2f}%")
+                        st.success(f"✅ Crédit Approuvé (risque {proba:.2f}%) – Seuil fixé à {SEUIL}%")
                     else:
                         statut_affiche = "Refusé"
-                        st.error(f"❌ Crédit Refusé avec une probabilité de défaut de {proba:.2f}%")
+                        st.error(f"❌ Crédit Refusé (risque {proba:.2f}%) – Seuil fixé à {SEUIL}%")
 
                     # Jauge Plotly
                     fig = go.Figure(go.Indicator(
@@ -148,10 +148,10 @@ with tab1:
             except Exception as e:
                 st.error(f"🚨 Erreur de connexion à l'API : {e}")
 
-
-# --- Onglet 2 ---
 with tab2:
     st.subheader("📇 Sélectionner un client pour afficher ses informations")
+
+    SEUIL = 10  # Seuil fixe
 
     try:
         df_test = pd.read_csv("data/test.csv")
@@ -167,34 +167,42 @@ with tab2:
 
                 infos = client_data.iloc[0].to_dict()
 
-                # CSS pour mise en forme propre
+                # ✅ Nouveau CSS pour mise en forme élégante
                 st.markdown("""
                 <style>
-                    .client-grid {
-                        display: grid;
-                        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-                        gap: 12px 30px;
-                        padding: 10px;
-                        font-family: 'Segoe UI', sans-serif;
-                        font-size: 16px;
-                        color: #1e293b;
-                        margin-top: 10px;
-                    }
-                    .field {
-                        font-weight: 600;
-                        color: #1e293b;
-                    }
-                    .value {
-                        font-weight: 500;
-                        color: #2563eb;
-                        margin-left: 6px;
-                    }
+                .card-client {
+                    background-color: #ffffff;
+                    border-radius: 12px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+                    padding: 20px 25px;
+                    margin-bottom: 15px;
+                    font-family: 'Segoe UI', sans-serif;
+                    transition: 0.3s;
+                }
+                .card-client:hover {
+                    box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+                }
+                .card-title {
+                    font-size: 18px;
+                    font-weight: 600;
+                    color: #2563eb;
+                    margin-bottom: 10px;
+                }
+                .card-value {
+                    font-size: 16px;
+                    font-weight: 500;
+                    color: #1e293b;
+                }
+                .card-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+                    gap: 20px;
+                }
                 </style>
                 """, unsafe_allow_html=True)
 
-                st.markdown('<div class="client-grid">', unsafe_allow_html=True)
-
-                # Affichage infos client avec mappings
+                # 🔄 Mapping valeurs binaires
+                st.markdown('<div class="card-grid">', unsafe_allow_html=True)
                 for key, value in infos.items():
                     if isinstance(value, (int, float)) and value in [0, 1]:
                         mapping = {
@@ -207,29 +215,36 @@ with tab2:
                         key_lower = key.lower()
                         value = mapping.get(key_lower, {}).get(value, value)
 
-                    st.markdown(
-                        f"<div><span class='field'>{key.replace('_', ' ')} :</span><span class='value'>{value}</span></div>",
-                        unsafe_allow_html=True
-                    )
+                    key_clean = key.replace("_", " ").capitalize()
+                    st.markdown(f"""
+                    <div class="card-client">
+                        <div class="card-title">{key_clean}</div>
+                        <div class="card-value">{value}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
                 st.markdown('</div>', unsafe_allow_html=True)
 
-                # --- 🔘 Bouton Prédire ---
+                # 🔘 Prédiction
                 if st.button("🔍 Prédire ce client"):
                     with st.spinner("Analyse en cours..."):
 
                         def text_to_int(key, val):
                             mappings = {
-                                "Gender": {"Femme": 0, "Homme": 1, "Male": 1, "Female": 0},
+                                "Gender": {"Femme": 0, "Homme": 1, "Female": 0, "Male": 1},
                                 "Married": {"Non Marié(e)": 0, "Marié(e)": 1, "No": 0, "Yes": 1},
                                 "Education": {"Supérieur": 0, "Non Supérieur": 1, "Graduate": 0, "Not Graduate": 1},
                                 "Self_Employed": {"Non": 0, "Oui": 1, "No": 0, "Yes": 1},
-                                "Credit_History": {"Mauvais": 0, "Bon": 1, 0: 0, 1: 1},
-                                "Property_Area": {"Rurale": 0, "Urbaine": 1, "Semi-urbaine": 2, "Rural": 0, "Urban": 1, "Semiurban": 2}
+                                "Credit_History": {"Mauvais": 0, "Bon": 1, 0.0: 0, 1.0: 1, 0: 0, 1: 1},
+                                "Property_Area": {
+                                    "Rurale": 0, "Urbaine": 1, "Semi-urbaine": 2,
+                                    "Rural": 0, "Urban": 1, "Semiurban": 2,
+                                    "RURAL": 0, "URBAN": 1, "SEMIURBAN": 2
+                                }
                             }
-                            if key in mappings:
-                                return mappings[key].get(val, val)
-                            return val
+                            return mappings.get(key, {}).get(val, val)
+
+                            
 
                         prediction_data = {
                             "Gender": infos.get("Gender"),
@@ -245,30 +260,26 @@ with tab2:
                             "Property_Area": infos.get("Property_Area")
                         }
 
-                        # Appliquer le mapping avant envoi
                         prediction_data_mapped = {k: text_to_int(k, v) for k, v in prediction_data.items()}
 
                         try:
                             response = requests.post("https://api-scoring-c8xa.onrender.com/predict", json=prediction_data_mapped)
-                            
-
                             if response.status_code == 200:
                                 result = response.json()
-                                statut = result['Statut Crédit']
                                 proba = float(result['Probabilité de défaut']) * 100
 
-                                if statut in ["Approuvé", "Accepté"]:
-                                    st.success(f"✅ Crédit Approuvé avec une probabilité de défaut de {proba:.2f}%")
+                                if proba <= SEUIL:
+                                    st.success(f"✅ Crédit Approuvé (risque {proba:.2f}%) – Seuil fixé à {SEUIL}%")
                                 else:
-                                    st.error(f"❌ Crédit Refusé avec une probabilité de défaut de {proba:.2f}%")
+                                    st.error(f"❌ Crédit Refusé (risque {proba:.2f}%) – Seuil fixé à {SEUIL}%")
 
-                                # Jauge Plotly
+                                # Jauge
                                 fig = go.Figure(go.Indicator(
                                     mode="gauge+number",
                                     value=proba,
                                     gauge={
                                         'axis': {'range': [0, 100]},
-                                        'bar': {'color': "red" if statut != "Approuvé" else "green"},
+                                        'bar': {'color': "red" if proba > SEUIL else "green"},
                                         'steps': [
                                             {'range': [0, 50], 'color': "lightgreen"},
                                             {'range': [50, 100], 'color': "salmon"}
@@ -280,7 +291,7 @@ with tab2:
                                 st.plotly_chart(fig, use_container_width=True)
 
                             else:
-                                st.error("❌ Erreur lors de la prédiction.")
+                                st.error(f"❌ Erreur lors de la prédiction. Code: {response.status_code} – Détail: {response.text}")
                         except Exception as e:
                             st.error(f"🚨 Erreur de connexion à l'API : {e}")
 
@@ -292,3 +303,14 @@ with tab2:
         st.error("❌ Fichier test.csv introuvable.")
     except Exception as e:
         st.error(f"🚨 Erreur : {e}")
+
+
+    try:
+        animation = load_lottiefile("credit.json")
+        st_lottie(animation, speed=1, height=200)
+    except FileNotFoundError:
+        st.warning("⚠️ Fichier credit.json introuvable.")
+    except Exception as e:
+        st.warning(f"⚠️ Erreur lors du chargement de l'animation : {e}")
+
+
