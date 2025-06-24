@@ -46,7 +46,7 @@ with st.container():
 @st.cache_data
 def load_data():
     try:
-        return pd.read_csv("data/train.csv")
+        return pd.read_csv("../data/train.csv")
     except:
         return pd.DataFrame()
 
@@ -154,7 +154,7 @@ with tab2:
     st.subheader("📇 Sélectionner un client pour afficher ses informations")
 
     try:
-        df_test = pd.read_csv("data/test.csv")
+        df_test = pd.read_csv("../data/test.csv")
         id_col = [col for col in df_test.columns if "id" in col.lower()]
         if id_col:
             id_col = id_col[0]
@@ -167,36 +167,35 @@ with tab2:
 
                 infos = client_data.iloc[0].to_dict()
 
-                # Style CSS moderne sans carte
+                # CSS pour mise en forme propre
                 st.markdown("""
                 <style>
                     .client-grid {
                         display: grid;
                         grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-                        gap: 18px 32px;
-                        padding: 20px 10px;
+                        gap: 12px 30px;
+                        padding: 10px;
                         font-family: 'Segoe UI', sans-serif;
                         font-size: 16px;
-                        color: #333;
+                        color: #1e293b;
                         margin-top: 10px;
                     }
                     .field {
                         font-weight: 600;
-                        color: #2c3e50;
+                        color: #1e293b;
                     }
                     .value {
                         font-weight: 500;
-                        color: #1a73e8;
-                        margin-left: 8px;
+                        color: #2563eb;
+                        margin-left: 6px;
                     }
                 </style>
                 """, unsafe_allow_html=True)
 
-                # Démarrage de la grille
                 st.markdown('<div class="client-grid">', unsafe_allow_html=True)
 
+                # Affichage infos client avec mappings
                 for key, value in infos.items():
-                    # Mapping de valeur binaire
                     if isinstance(value, (int, float)) and value in [0, 1]:
                         mapping = {
                             "gender": {0: "Femme", 1: "Homme"},
@@ -208,14 +207,82 @@ with tab2:
                         key_lower = key.lower()
                         value = mapping.get(key_lower, {}).get(value, value)
 
-                    # Affichage aligné en ligne "Nom: Valeur"
-                    st.markdown(f"<div><span class='field'>{key.replace('_', ' ')} :</span><span class='value'>{value}</span></div>", unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div><span class='field'>{key.replace('_', ' ')} :</span><span class='value'>{value}</span></div>",
+                        unsafe_allow_html=True
+                    )
 
                 st.markdown('</div>', unsafe_allow_html=True)
 
-                # Graphique optionnel
-                with st.expander("📊 Variables numériques"):
-                    st.bar_chart(client_data.select_dtypes(include='number').T)
+                # --- 🔘 Bouton Prédire ---
+                if st.button("🔍 Prédire ce client"):
+                    with st.spinner("Analyse en cours..."):
+
+                        def text_to_int(key, val):
+                            mappings = {
+                                "Gender": {"Femme": 0, "Homme": 1, "Male": 1, "Female": 0},
+                                "Married": {"Non Marié(e)": 0, "Marié(e)": 1, "No": 0, "Yes": 1},
+                                "Education": {"Supérieur": 0, "Non Supérieur": 1, "Graduate": 0, "Not Graduate": 1},
+                                "Self_Employed": {"Non": 0, "Oui": 1, "No": 0, "Yes": 1},
+                                "Credit_History": {"Mauvais": 0, "Bon": 1, 0: 0, 1: 1},
+                                "Property_Area": {"Rurale": 0, "Urbaine": 1, "Semi-urbaine": 2, "Rural": 0, "Urban": 1, "Semiurban": 2}
+                            }
+                            if key in mappings:
+                                return mappings[key].get(val, val)
+                            return val
+
+                        prediction_data = {
+                            "Gender": infos.get("Gender"),
+                            "Married": infos.get("Married"),
+                            "Dependents": infos.get("Dependents"),
+                            "Education": infos.get("Education"),
+                            "Self_Employed": infos.get("Self_Employed"),
+                            "ApplicantIncome": infos.get("ApplicantIncome"),
+                            "CoapplicantIncome": infos.get("CoapplicantIncome"),
+                            "LoanAmount": infos.get("LoanAmount"),
+                            "Loan_Amount_Term": infos.get("Loan_Amount_Term"),
+                            "Credit_History": infos.get("Credit_History"),
+                            "Property_Area": infos.get("Property_Area")
+                        }
+
+                        # Appliquer le mapping avant envoi
+                        prediction_data_mapped = {k: text_to_int(k, v) for k, v in prediction_data.items()}
+
+                        try:
+                            response = requests.post("https://api-scoring-c8xa.onrender.com/predict", json=prediction_data_mapped)
+                            
+
+                            if response.status_code == 200:
+                                result = response.json()
+                                statut = result['Statut Crédit']
+                                proba = float(result['Probabilité de défaut']) * 100
+
+                                if statut in ["Approuvé", "Accepté"]:
+                                    st.success(f"✅ Crédit Approuvé avec une probabilité de défaut de {proba:.2f}%")
+                                else:
+                                    st.error(f"❌ Crédit Refusé avec une probabilité de défaut de {proba:.2f}%")
+
+                                # Jauge Plotly
+                                fig = go.Figure(go.Indicator(
+                                    mode="gauge+number",
+                                    value=proba,
+                                    gauge={
+                                        'axis': {'range': [0, 100]},
+                                        'bar': {'color': "red" if statut != "Approuvé" else "green"},
+                                        'steps': [
+                                            {'range': [0, 50], 'color': "lightgreen"},
+                                            {'range': [50, 100], 'color': "salmon"}
+                                        ]
+                                    },
+                                    title={'text': "Probabilité de Défaut (%)"}
+                                ))
+                                fig.update_layout(height=300)
+                                st.plotly_chart(fig, use_container_width=True)
+
+                            else:
+                                st.error("❌ Erreur lors de la prédiction.")
+                        except Exception as e:
+                            st.error(f"🚨 Erreur de connexion à l'API : {e}")
 
             else:
                 st.warning("⚠️ Client introuvable.")
@@ -225,14 +292,3 @@ with tab2:
         st.error("❌ Fichier test.csv introuvable.")
     except Exception as e:
         st.error(f"🚨 Erreur : {e}")
-
-
-
-# --- Animation ---
-try:
-    animation = load_lottiefile("credit.json")
-    st_lottie(animation, speed=1, height=200)
-except FileNotFoundError:
-    st.warning("⚠️ Fichier credit.json introuvable.")
-except Exception as e:
-    st.warning(f"⚠️ Erreur lors du chargement de l'animation : {e}")
